@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IELTS Speaking Simulation</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>IELTS Speaking Simulation</h1>
+
+        <h2>Live Voice Recording</h2>
+        <button id="start-recording">Start Live Recording</button>
+        <audio id="audio-player" controls></audio>
+
+        <h2>Upload Pre-recorded Audio</h2>
+        <input type="file" id="file-input" accept="audio/*" />
+
+        <h2>Chat with GPT</h2>
+        <input type="text" id="userMessage" placeholder="Type your message...">
+        <button onclick="sendMessage()">Send</button>
+        <div id="chatResponse"></div>
+    </div>
+    <script>
+        const startRecordingButton = document.getElementById('start-recording');
+        const fileInput = document.getElementById('file-input');
+        const audioPlayer = document.getElementById('audio-player');
+        const chatResponseDiv = document.getElementById('chatResponse');
+        const userMessageInput = document.getElementById('userMessage');
+        let mediaRecorder, audioChunks = [];
+
+        startRecordingButton.addEventListener('click', async () => {
+            if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+
+                    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+
+                    mediaRecorder.onstop = async () => {
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                        const formData = new FormData();
+                        formData.append('file', audioBlob, 'recording.wav');
+
+                        const response = await fetch('/transcribe', { method: 'POST', body: formData });
+                        const data = await response.json();
+                        chatResponseDiv.innerText = data.transcription || 'Error during transcription';
+                        audioPlayer.src = URL.createObjectURL(audioBlob);
+                        audioChunks = [];
+                    };
+
+                    mediaRecorder.start();
+                    startRecordingButton.textContent = 'Stop Recording';
+                } catch (err) {
+                    console.error(err);
+                    alert('Error accessing microphone');
+                }
+            } else {
+                mediaRecorder.stop();
+                startRecordingButton.textContent = 'Start Recording';
+            }
+        });
+
+        fileInput.addEventListener('change', async () => {
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const response = await fetch('/transcribe', { method: 'POST', body: formData });
+            const data = await response.json();
+            chatResponseDiv.innerText = data.transcription || 'Error during transcription';
+        });
+
+        async function sendMessage() {
+            const userMessage = userMessageInput.value;
+            if (!userMessage) {
+                alert('Please enter a message');
+                return;
+            }
+
+            const response = await fetch('/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: userMessage })
+            });
+
+            const data = await response.json();
+            chatResponseDiv.innerText = data.response || 'Error during response generation';
+            userMessageInput.value = '';
+        }
+    </script>
+</body>
+</html>
